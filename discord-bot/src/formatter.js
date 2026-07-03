@@ -32,10 +32,17 @@ function formatStatus(data) {
   function formatError() {
     return "I could not read the monitoring data right now. Please check the backend or bot setup.";
   }
+  function formatAlert(alert) {
+    const room = alert.room || alert.room_name || "Unknown room";
+    const device = alert.device || alert.device_name || "Unknown device";
+    const reason = alert.reason || alert.message || "Alert triggered";
   
+    return `Alert: ${device} in ${room} — ${reason}.`;
+  }
   module.exports = {
     formatStatus,
     formatRoom,
     formatUsage,
+    formatAlert,
     formatError
   };
