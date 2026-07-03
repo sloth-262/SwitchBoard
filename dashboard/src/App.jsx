@@ -1,5 +1,6 @@
 import DeviceStatusPanel from "./components/DeviceStatusPanel";
 import PowerMeter from "./components/PowerMeter";
+import AlertsPanel from "./components/AlertsPanel";
 import { mockDevices } from "./data/mockDevices";
 
 function App() {
@@ -9,6 +10,9 @@ function App() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <DeviceStatusPanel rooms={mockDevices.rooms} />
         <PowerMeter rooms={mockDevices.rooms} />
+        <div className="lg:col-span-2">
+          <AlertsPanel rooms={mockDevices.rooms} />
+        </div>
       </div>
     </div>
   );
