@@ -13,11 +13,12 @@ const {
 } = require("./api");
 
 const {
-  formatStatus,
-  formatRoom,
-  formatUsage,
   formatError
 } = require("./formatter");
+
+const {
+  humanize
+} = require("./llm");
 
 const PREFIX = process.env.COMMAND_PREFIX || "!";
 
@@ -97,7 +98,7 @@ async function handleStatus(message) {
   await message.channel.sendTyping();
 
   const data = await getStatus();
-  const reply = formatStatus(data);
+  const reply = await humanize("status", data);
 
   await message.reply(reply);
 }
@@ -113,7 +114,7 @@ async function handleRoom(message, args) {
   await message.channel.sendTyping();
 
   const data = await getRoom(roomName);
-  const reply = formatRoom(data);
+  const reply = await humanize("room", data, { roomName });
 
   await message.reply(reply);
 }
@@ -122,7 +123,7 @@ async function handleUsage(message) {
   await message.channel.sendTyping();
 
   const data = await getUsage();
-  const reply = formatUsage(data);
+  const reply = await humanize("usage", data);
 
   await message.reply(reply);
 }
