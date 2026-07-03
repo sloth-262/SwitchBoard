@@ -1,9 +1,13 @@
+import DeviceStatusPanel from "./components/DeviceStatusPanel";
+import { mockDevices } from "./data/mockDevices";
+
 function App() {
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-      <h1 className="text-3xl font-bold">Office Dashboard — Tailwind Working ✅</h1>
+    <div className="min-h-screen bg-slate-950 text-white p-6">
+      <h1 className="text-2xl font-bold mb-6">Office Dashboard</h1>
+      <DeviceStatusPanel rooms={mockDevices.rooms} />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
