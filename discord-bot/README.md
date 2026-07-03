@@ -30,12 +30,15 @@ Copy `.env.example` to `.env` and fill in the values. **`.env` is gitignored —
 never commit it.**
 
 ```env
-DISCORD_TOKEN=          # your bot token
-COMMAND_PREFIX=!        # command prefix
+DISCORD_TOKEN=              # your bot token
+COMMAND_PREFIX=!            # command prefix
 BACKEND_URL=http://127.0.0.1:8000/api/v1
-USE_MOCK_DATA=true      # "false" to call the real backend
-GROQ_API_KEY=           # optional; enables LLM-rewritten replies
-GROQ_MODEL=             # optional; e.g. a Groq-hosted model id
+USE_MOCK_DATA=true          # "false" to call the real backend
+GROQ_API_KEY=               # optional; enables LLM-rewritten replies
+GROQ_MODEL=                 # optional; e.g. a Groq-hosted model id
+DISCORD_CHANNEL_ID=         # optional; channel for proactive alert posts
+ALERT_POLL_MS=20000         # optional; how often to poll /alerts (ms)
+ALERT_ANNOUNCE_EXISTING=false  # optional; "true" posts pre-existing alerts on boot
 ```
 
 ### `BACKEND_URL`
@@ -60,6 +63,26 @@ shape (e.g. device `state`/`status`, `wattage`/`power_watts`,
 `room_name`/`name`, `today_kwh`/`kwh_today`). If the backend is unreachable, the
 bot replies with a friendly fallback error instead of crashing.
 
+## Proactive Alerts
+
+When `DISCORD_CHANNEL_ID` is set, the bot polls `GET /alerts` every
+`ALERT_POLL_MS` (default 20s) and posts any **new** alert into that channel,
+phrased through the same LLM humanizer (with plain-text fallback) used by the
+commands.
+
+- **Deduplication:** each alert is tracked by its backend `id` (or a
+  room/device/reason composite when no id is present), so the same alert is
+  never posted twice within a process lifetime.
+- **Boot behavior:** on the first poll the bot silently records existing alerts
+  so the channel isn't flooded with backlog. Set `ALERT_ANNOUNCE_EXISTING=true`
+  to post the current alerts on startup instead.
+- **Safe by default:** if `DISCORD_CHANNEL_ID` is unset, the channel can't be
+  fetched, or a poll fails, the watcher logs a warning and the rest of the bot
+  keeps working — proactive alerts simply stay off.
+
+This is implemented bot-side (polling) rather than via a backend webhook, so it
+needs no backend changes and reuses the existing `/alerts` route.
+
 ## Running
 
 ```bash
@@ -75,3 +98,28 @@ Make sure the Laravel backend is running when `USE_MOCK_DATA=false`:
 php artisan migrate --seed
 php artisan serve   # serves http://127.0.0.1:8000
 ```
+
+## LLM Prompt Design
+
+The bot never lets the LLM invent data. Raw backend JSON is fetched first, then
+a single reusable humanizer (`src/llm.js` → `humanize(intent, data, extra)`)
+turns it into a friendly Discord sentence. The same function powers both
+on-demand commands and proactive alerts.
+
+Design decisions:
+
+- **Grounding over creativity.** The prompt hard-instructs the model to use only
+  the supplied JSON and to never invent device states, rooms, wattage, usage, or
+  alerts. `temperature` is kept low (0.2) to minimize drift.
+- **Tone.** It's told to sound like a helpful office colleague, stay under three
+  sentences, avoid JSON in the output, and never mention that it's an AI.
+- **Determinism of facts.** Because the numbers come from the backend and the
+  model only rephrases them, the bot and the dashboard always report the same
+  figures off the same source of truth.
+- **Fallback first.** If `GROQ_API_KEY`/`GROQ_MODEL` are missing, the Groq call
+  errors, or it returns empty text, `humanize` falls back to the plain-text
+  formatters in `src/formatter.js`. The demo works with or without a live LLM
+  key — a bad key can't sink it.
+
+The provider is **Groq** (free tier, OpenAI-compatible endpoint); keys are read
+only from environment variables and never hardcoded.

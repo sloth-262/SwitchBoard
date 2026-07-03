@@ -37,6 +37,10 @@ function collectDevices(data) {
 }
 
 function formatStatus(data) {
+  if (!data || typeof data !== "object") {
+    return "I couldn't read any office status right now — the backend returned no data.";
+  }
+
   const devices = collectDevices(data);
 
   const totalDevices = data.total_devices ?? devices.length;
@@ -49,12 +53,27 @@ function formatStatus(data) {
       ? data.alerts
       : [];
 
+  // Empty system (no devices at all) — most likely the backend isn't seeded.
+  if (totalDevices === 0) {
+    return "I couldn't find any devices in the system right now — the backend may be empty or still starting up.";
+  }
+
+  // Everything is off — call it out positively rather than "0 out of N ON".
+  if (onDevices === 0) {
+    return `All ${totalDevices} office devices are currently OFF, so live draw is ${currentWatts}W. Active alerts: ${alertList.length}.`;
+  }
+
   return `Right now, ${onDevices} out of ${totalDevices} office devices are ON, drawing about ${currentWatts}W. Active alerts: ${alertList.length}.`;
 }
 
 function formatRoom(data) {
-  const roomName = data.room_name || data.name || "Room";
-  const devices = data.devices || [];
+  const roomName = (data && (data.room_name || data.name)) || "That room";
+  const devices = (data && data.devices) || [];
+
+  // No devices found for the room — usually an unseeded backend or bad id.
+  if (devices.length === 0) {
+    return `I couldn't find any devices for ${roomName} right now.`;
+  }
 
   const onDevices = devices.filter(deviceIsOn);
   const offDevices = devices.filter((device) => !deviceIsOn(device));
@@ -68,9 +87,22 @@ function formatRoom(data) {
     data.current_watts ??
     onDevices.reduce((sum, device) => sum + deviceWattage(device), 0);
 
+  const alerts = data.alerts || [];
+
+  // Everything in the room is off.
+  if (onDevices.length === 0) {
+    let reply = `${roomName} is all quiet — every device (${devices.length}) is currently OFF, so it's drawing 0W.`;
+    if (alerts.length > 0) {
+      const alert = alerts[0];
+      const device = alert.device || alert.device_name || alert.type || "A device";
+      const reason = alert.reason || alert.message || "needs attention";
+      reply += ` Alert: ${device} — ${reason}.`;
+    }
+    return reply;
+  }
+
   let reply = `${roomName}: ${lightsOn} light(s) and ${fansOn} fan(s) are ON, using about ${currentWatts}W. ${offDevices.length} device(s) are currently OFF.`;
 
-  const alerts = data.alerts || [];
   if (alerts.length > 0) {
     const alert = alerts[0];
     const device = alert.device || alert.device_name || alert.type || "A device";
@@ -102,15 +134,31 @@ function formatError() {
 }
 
 function formatAlert(alert) {
+  if (!alert || typeof alert !== "object") {
+    return "An alert was triggered, but I couldn't read its details.";
+  }
+
   const room =
     alert.room_name ||
     (alert.room && typeof alert.room === "object" ? alert.room.name : null) ||
     (typeof alert.room === "string" ? alert.room : null) ||
     "Unknown room";
-  const device = alert.device || alert.device_name || alert.type || "A device";
-  const reason = alert.reason || alert.message || "Alert triggered";
 
-  return `Alert: ${device} in ${room} — ${reason}.`;
+  // Only treat an explicit device name as a device — `type` (e.g. "after_hours",
+  // "long_on") is a category, not a device, so it shouldn't read as one.
+  const device = alert.device || alert.device_name || null;
+  const message = alert.message || alert.reason || null;
+
+  if (device) {
+    const reason = alert.reason || alert.message || "needs attention";
+    return `Alert: ${device} in ${room} — ${reason}.`;
+  }
+
+  if (message) {
+    return `Alert in ${room}: ${message}`;
+  }
+
+  return `Alert in ${room}: something needs attention.`;
 }
 
 module.exports = {

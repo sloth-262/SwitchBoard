@@ -20,6 +20,10 @@ const {
   humanize
 } = require("./llm");
 
+const {
+  startAlertWatcher
+} = require("./alerts");
+
 const PREFIX = process.env.COMMAND_PREFIX || "!";
 
 console.log("Starting bot...");
@@ -39,6 +43,11 @@ const client = new Client({
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Bot is online as ${readyClient.user.tag}`);
+
+  // Start proactive alert posting. Safe no-op if DISCORD_CHANNEL_ID is unset.
+  startAlertWatcher(readyClient).catch((error) => {
+    console.error("Failed to start alert watcher:", error);
+  });
 });
 
 client.on(Events.MessageCreate, async (message) => {
