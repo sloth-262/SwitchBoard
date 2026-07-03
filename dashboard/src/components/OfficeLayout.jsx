@@ -54,7 +54,7 @@ export default function OfficeLayout({ rooms }) {
   return (
     <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
       <h2 className="text-lg font-bold text-white mb-4">Office Layout</h2>
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
         {rooms.map((room) => (
           <RoomBox key={room.id} room={room} />
         ))}

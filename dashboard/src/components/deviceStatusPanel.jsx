@@ -1,10 +1,10 @@
 function DeviceCard({ device }) {
   return (
     <div
-      className={`rounded-lg p-3 border ${
+      className={`rounded-lg p-3 border transition-colors duration-200 ${
         device.status
           ? "bg-amber-500/10 border-amber-400"
-          : "bg-slate-800 border-slate-700"
+          : "bg-slate-800 border-slate-700 hover:border-slate-600"
       }`}
     >
       <div className="flex items-center justify-between">
