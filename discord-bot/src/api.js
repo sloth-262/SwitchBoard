@@ -1,7 +1,26 @@
 const axios = require("axios");
 
-const BASE_URL = process.env.BACKEND_URL || "http://localhost:8000/api";
+// BACKEND_URL should already include the API version prefix, e.g.
+//   http://127.0.0.1:8000/api/v1
+// All request paths below are relative to it (/status, /usage, /rooms/{id}).
+// Trailing slashes are stripped so `${BASE_URL}${path}` never doubles up.
+const BASE_URL = (process.env.BACKEND_URL || "http://127.0.0.1:8000/api/v1").replace(/\/+$/, "");
 const USE_MOCK_DATA = process.env.USE_MOCK_DATA !== "false";
+
+// Friendly room aliases -> backend room IDs (see database seeder).
+// Numeric IDs (!room 1) are always accepted directly; these are extras.
+const ROOM_ALIASES = {
+  boss: 1,
+  meeting: 2,
+  lobby: 3
+};
+
+// Reverse mapping so mock mode also answers numeric IDs (!room 1 -> boss).
+const MOCK_KEY_BY_ID = {
+  "1": "boss",
+  "2": "meeting",
+  "3": "lobby"
+};
 
 console.log("BACKEND_URL:", BASE_URL);
 console.log("USE_MOCK_DATA raw:", process.env.USE_MOCK_DATA);
@@ -97,20 +116,54 @@ async function getStatus() {
   return request("/status");
 }
 
+// Resolve a user-supplied room reference to a backend numeric ID.
+// Accepts numeric IDs (1, 2, 3) directly, plus the friendly aliases.
+// Returns null when it cannot be resolved.
+function resolveRoomId(input) {
+  const key = String(input).trim().toLowerCase();
+
+  if (/^\d+$/.test(key)) {
+    return key;
+  }
+
+  if (ROOM_ALIASES[key]) {
+    return String(ROOM_ALIASES[key]);
+  }
+
+  return null;
+}
+
+// Resolve a room reference to a mock key. Numeric IDs map through
+// MOCK_KEY_BY_ID; otherwise the lowered name (boss/meeting/lobby) is used.
+function resolveMockKey(input) {
+  const key = String(input).trim().toLowerCase();
+  return MOCK_KEY_BY_ID[key] || key;
+}
+
+function roomNotFound() {
+  const error = new Error("Room not found");
+  error.code = "ROOM_NOT_FOUND";
+  return error;
+}
+
 async function getRoom(roomName) {
   if (USE_MOCK_DATA) {
-    const key = roomName.toLowerCase();
+    const key = resolveMockKey(roomName);
 
     if (!mockRooms[key]) {
-      const error = new Error("Room not found");
-      error.code = "ROOM_NOT_FOUND";
-      throw error;
+      throw roomNotFound();
     }
 
     return mockRooms[key];
   }
 
-  return request(`/rooms/${encodeURIComponent(roomName)}`);
+  const roomId = resolveRoomId(roomName);
+
+  if (roomId === null) {
+    throw roomNotFound();
+  }
+
+  return request(`/rooms/${encodeURIComponent(roomId)}`);
 }
 
 async function getUsage() {

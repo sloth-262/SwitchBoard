@@ -76,7 +76,7 @@ client.on(Events.MessageCreate, async (message) => {
     console.error(error);
 
     if (error.code === "ROOM_NOT_FOUND") {
-      await message.reply("I could not find that room. Try `!room boss`, `!room meeting`, or `!room lobby`.");
+      await message.reply("I could not find that room. Try `!room 1`, `!room 2`, or `!room 3` (aliases: `!room boss`, `!room meeting`, `!room lobby`).");
       return;
     }
 
@@ -89,7 +89,7 @@ async function handleHelp(message) {
 Available commands:
 
 \`!status\` — Shows overall office status.
-\`!room <room>\` — Shows room-specific status. Example: \`!room boss\`.
+\`!room <id|name>\` — Shows room-specific status. Examples: \`!room 1\`, \`!room boss\`.
 \`!usage\` — Shows today's energy usage.
 `);
 }
