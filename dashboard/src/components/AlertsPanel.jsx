@@ -1,9 +1,16 @@
 function AlertItem({ alert }) {
+  const isAfterHours = alert.type === "after-hours";
   return (
-    <div className="rounded-lg p-3 border mb-2 bg-red-500/10 border-red-500/40">
+    <div
+      className={`rounded-lg p-3 border mb-2 ${
+        isAfterHours
+          ? "bg-red-500/10 border-red-500/40"
+          : "bg-orange-500/10 border-orange-500/40"
+      }`}
+    >
       <p className="text-sm text-white">{alert.message}</p>
       <p className="text-xs text-slate-400 mt-1">
-        {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString() : ""}
+        {alert.room?.name} · {new Date(alert.triggered_at).toLocaleTimeString()}
       </p>
     </div>
   );
@@ -20,7 +27,7 @@ export default function AlertsPanel({ alerts }) {
       {alerts.length === 0 ? (
         <p className="text-sm text-slate-500">No active alerts.</p>
       ) : (
-        alerts.map((a, i) => <AlertItem key={a.id ?? i} alert={a} />)
+        alerts.map((a) => <AlertItem key={a.id} alert={a} />)
       )}
     </div>
   );
