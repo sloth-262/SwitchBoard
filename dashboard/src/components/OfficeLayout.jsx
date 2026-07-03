@@ -1,9 +1,3 @@
-const ROOM_LABELS = {
-  drawing: "Drawing Room",
-  work1: "Work Room 1",
-  work2: "Work Room 2",
-};
-
 function FanIcon({ isOn }) {
   return (
     <div
@@ -35,22 +29,18 @@ function LightIcon({ isOn }) {
   );
 }
 
-function RoomBox({ roomKey, devices }) {
-  const fans = devices.filter((d) => d.type === "fan");
-  const lights = devices.filter((d) => d.type === "light");
+function RoomBox({ room }) {
+  const fans = room.devices.filter((d) => d.type === "fan");
+  const lights = room.devices.filter((d) => d.type === "light");
 
   return (
     <div className="flex-1 border border-slate-700 rounded-lg bg-slate-900 p-4 min-h-[220px] flex flex-col">
-      <h3 className="text-sm font-semibold text-slate-300 mb-4">
-        {ROOM_LABELS[roomKey]}
-      </h3>
-
+      <h3 className="text-sm font-semibold text-slate-300 mb-4">{room.name}</h3>
       <div className="flex justify-around mb-6">
         {fans.map((f) => (
           <FanIcon key={f.id} isOn={f.status} />
         ))}
       </div>
-
       <div className="flex justify-around mt-auto">
         {lights.map((l) => (
           <LightIcon key={l.id} isOn={l.status} />
@@ -65,8 +55,8 @@ export default function OfficeLayout({ rooms }) {
     <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
       <h2 className="text-lg font-bold text-white mb-4">Office Layout</h2>
       <div className="flex gap-4">
-        {Object.entries(rooms).map(([roomKey, devices]) => (
-          <RoomBox key={roomKey} roomKey={roomKey} devices={devices} />
+        {rooms.map((room) => (
+          <RoomBox key={room.id} room={room} />
         ))}
       </div>
     </div>
