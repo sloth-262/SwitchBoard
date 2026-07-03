@@ -12,11 +12,36 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // \App\Models\User::factory(10)->create();
+        $rooms = [
+            'Drawing Room',
+            'Work Room 1',
+            'Work Room 2'
+        ];
 
-        // \App\Models\User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+        foreach ($rooms as $roomName) {
+            $room = \App\Models\Room::create(['name' => $roomName]);
+
+            // 2 fans per room
+            for ($i = 1; $i <= 2; $i++) {
+                \App\Models\Device::create([
+                    'room_id' => $room->id,
+                    'name' => "Fan {$i}",
+                    'type' => 'fan',
+                    'status' => false,
+                    'power_watts' => 60,
+                ]);
+            }
+
+            // 3 lights per room
+            for ($i = 1; $i <= 3; $i++) {
+                \App\Models\Device::create([
+                    'room_id' => $room->id,
+                    'name' => "Light {$i}",
+                    'type' => 'light',
+                    'status' => false,
+                    'power_watts' => 15,
+                ]);
+            }
+        }
     }
 }
