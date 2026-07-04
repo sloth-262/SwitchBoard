@@ -1,125 +1,273 @@
-# SwitchBoard Discord Bot
+# SwitchBoard
 
-A Discord bot that reports on the SwitchBoard office IoT monitoring system. It
-can run against **mock data** (no backend needed) or the **real Laravel
-backend**, and optionally rewrites replies through an LLM (Groq).
+**Lights, Fans, Discord** — an office IoT monitoring system built for Techathon Nationals (IUT Robotics Society).
 
-## Commands
+Simulates 15 smart office devices (fans & lights) across 3 rooms with a single Laravel API as the source of truth, consumed live by a React dashboard and a Discord bot — so both interfaces always reflect the same reality.
 
-| Command | Description |
-| --- | --- |
-| `!status` | Overall office status (devices ON, live draw, active alerts). Calls `GET /status`. |
-| `!usage` | Today's energy usage. Calls `GET /usage`. |
-| `!room <id\|name>` | Room-specific status. Calls `GET /rooms/{id}`. |
-| `!help` | Lists the available commands. |
+---
 
-### Rooms
+## Table of Contents
 
-`!room` accepts a numeric backend ID first, e.g. `!room 1`, `!room 2`,
-`!room 3`. Friendly aliases also map to those IDs:
+- [Architecture](#architecture)
+- [Domain](#domain)
+- [Quick Start](#quick-start)
+- [Backend Setup](#backend-setup)
+- [Frontend Setup (React Dashboard)](#frontend-setup-react-dashboard)
+- [Discord Bot Setup](#discord-bot-setup)
+- [Device Simulator](#device-simulator)
+- [API Endpoints](#api-endpoints)
+- [Database Schema](#database-schema)
+- [Troubleshooting](#troubleshooting)
+- [Project Structure](#project-structure)
 
-| Alias | Backend ID |
-| --- | --- |
-| `!room boss` | 1 |
-| `!room meeting` | 2 |
-| `!room lobby` | 3 |
+---
 
-## Configuration
+## Architecture
 
-Copy `.env.example` to `.env` and fill in the values. **`.env` is gitignored —
-never commit it.**
-
-```env
-DISCORD_TOKEN=              # your bot token
-COMMAND_PREFIX=!            # command prefix
-BACKEND_URL=http://127.0.0.1:8000/api/v1
-USE_MOCK_DATA=true          # "false" to call the real backend
-GROQ_API_KEY=               # optional; enables LLM-rewritten replies
-GROQ_MODEL=                 # optional; e.g. a Groq-hosted model id
-DISCORD_CHANNEL_ID=         # optional; channel for proactive alert posts
-ALERT_POLL_MS=20000         # optional; how often to poll /alerts (ms)
-ALERT_ANNOUNCE_EXISTING=false  # optional; "true" posts pre-existing alerts on boot
+```
+                  ┌─────────────────────────┐
+                  │   Device Simulator       │
+                  │ (php artisan devices:    │
+                  │       simulate)          │
+                  └───────────┬─────────────┘
+                              │ writes state
+                              ▼
+                  ┌─────────────────────────┐
+                  │   Laravel API (:8000)   │
+                  │   SQLite — single       │
+                  │   source of truth       │
+                  └──────┬───────────┬──────┘
+                         │           │
+             REST API    │           │   REST API
+                         ▼           ▼
+          ┌───────────────────┐   ┌──────────────────┐
+          │  React Dashboard   │   │   Discord Bot     │
+          │  (dashboard/ :5173)│   │  (discord-bot/)   │
+          └───────────────────┘   └──────────────────┘
 ```
 
-### `BACKEND_URL`
+Both the dashboard and the Discord bot are read-only consumers of the same Laravel API — neither talks to the other directly, and neither has its own copy of device state.
 
-`BACKEND_URL` **must include the `/api/v1` prefix**, e.g.
-`http://127.0.0.1:8000/api/v1`. All requests are made relative to it:
+## Domain
 
-- `!status` → `GET {BACKEND_URL}/status`
-- `!usage`  → `GET {BACKEND_URL}/usage`
-- `!room 1` → `GET {BACKEND_URL}/rooms/1`
+- **3 Rooms:** Drawing Room, Work Room 1, Work Room 2
+- **15 Devices total:** 2 fans (60W each) + 3 lights (15W each) per room
+- **Database:** SQLite
+- **Office hours:** 9 AM – 5 PM (used for after-hours alert detection)
 
-Trailing slashes on `BACKEND_URL` are stripped automatically.
+## Quick Start
 
-### Mock vs. real backend
+You'll need **4 terminals** running simultaneously:
 
-- `USE_MOCK_DATA=true` (or unset): the bot serves built-in mock data and never
-  touches the network. Useful for local development.
-- `USE_MOCK_DATA=false`: the bot calls the Laravel backend at `BACKEND_URL`.
+| Terminal | Command | Purpose |
+|---|---|---|
+| 1 | `php artisan serve` | Laravel API on port 8000 |
+| 2 | `php artisan devices:simulate` | Keeps device data "live" and generates alerts |
+| 3 | `cd dashboard && npm run dev` | React dashboard on port 5173 |
+| 4 | `cd discord-bot && npm start` | Discord bot |
 
-The response formatters tolerate both the mock JSON shape and the backend JSON
-shape (e.g. device `state`/`status`, `wattage`/`power_watts`,
-`room_name`/`name`, `today_kwh`/`kwh_today`). If the backend is unreachable, the
-bot replies with a friendly fallback error instead of crashing.
+Full setup instructions for each below.
 
-## Proactive Alerts
+---
 
-When `DISCORD_CHANNEL_ID` is set, the bot polls `GET /alerts` every
-`ALERT_POLL_MS` (default 20s) and posts any **new** alert into that channel,
-phrased through the same LLM humanizer (with plain-text fallback) used by the
-commands.
+## Backend Setup
 
-- **Deduplication:** each alert is tracked by its backend `id` (or a
-  room/device/reason composite when no id is present), so the same alert is
-  never posted twice within a process lifetime.
-- **Boot behavior:** on the first poll the bot silently records existing alerts
-  so the channel isn't flooded with backlog. Set `ALERT_ANNOUNCE_EXISTING=true`
-  to post the current alerts on startup instead.
-- **Safe by default:** if `DISCORD_CHANNEL_ID` is unset, the channel can't be
-  fetched, or a poll fails, the watcher logs a warning and the rest of the bot
-  keeps working — proactive alerts simply stay off.
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-This is implemented bot-side (polling) rather than via a backend webhook, so it
-needs no backend changes and reuses the existing `/alerts` route.
+**Create the SQLite database file** (Laravel does not create this automatically):
+```bash
+# macOS/Linux
+touch database/database.sqlite
 
-## Running
+# Windows PowerShell
+New-Item -ItemType File -Path database\database.sqlite -Force
+```
+
+**Run migrations and seed initial data:**
+```bash
+php artisan migrate:fresh --seed
+```
+
+**Start the server:**
+```bash
+php artisan serve
+```
+
+**Verify it's working:**
+```
+http://127.0.0.1:8000/api/v1/status
+```
+This should return JSON with all 3 rooms and their devices.
+
+---
+
+## Frontend Setup (React Dashboard)
+
+Built with React + Vite + Tailwind CSS v4. Polls the Laravel API every 4 seconds for live updates — no page refresh required.
+
+```bash
+cd dashboard
+npm install
+```
+
+**Create `dashboard/.env`:**
+```
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+**Run the dev server** (with the backend already running on port 8000):
+```bash
+npm run dev
+```
+Open the printed URL — usually `http://localhost:5173`.
+
+### Dashboard Features
+
+- **Live Device Status Panel** — all 15 devices grouped by room, with real-time on/off indicators and live wattage
+- **Live Power Consumption Meter** — total office wattage plus a per-room breakdown, sourced directly from the API's computed total
+- **Active Alerts Panel** — real, backend-generated alerts (devices left on after office hours, rooms with all devices on for 2+ continuous hours), each with room name and timestamp
+- **Office Layout View** — animated top-view of all 3 rooms; fans spin and lights glow when devices are ON
+- **Live connection indicator** — pulsing status dot in the header confirms an active connection
+- **Responsive layout** — tested down to mobile widths; office layout stacks vertically on small screens
+- **Loading & error states** — graceful handling if the backend is unreachable or still starting up
+
+### Frontend Structure
+
+```
+dashboard/src/
+├── api/
+│   └── client.js            # centralized fetch calls to the Laravel API
+├── hooks/
+│   └── useDeviceData.js     # polling hook (status + alerts, 4s interval)
+├── components/
+│   ├── Header.jsx
+│   ├── deviceStatusPanel.jsx
+│   ├── PowerMeter.jsx
+│   ├── AlertsPanel.jsx
+│   └── OfficeLayout.jsx
+└── App.jsx
+```
+
+---
+
+## Discord Bot Setup
 
 ```bash
 cd discord-bot
+cp .env.example .env
+```
+
+**Fill in `discord-bot/.env`:**
+```
+DISCORD_TOKEN=your_bot_token_here
+BACKEND_URL=http://127.0.0.1:8000/api/v1
+USE_MOCK_DATA=false
+```
+
+> `USE_MOCK_DATA` must be `false` for the bot to reflect real, live data from the shared backend. Leaving it `true` will make the bot answer with fake data that won't match the dashboard.
+
+**Discord Developer Portal setup** (required once per bot application):
+1. Go to https://discord.com/developers/applications
+2. Select your application → **Bot** tab
+3. Under **Privileged Gateway Intents**, enable **Message Content Intent** (required for the bot to read `!status`-style commands)
+4. Save changes
+
+**Install and run:**
+```bash
 npm install
 npm start
 ```
 
-Make sure the Laravel backend is running when `USE_MOCK_DATA=false`:
+**Commands:**
+| Command | Description |
+|---|---|
+| `!status` | Full office status, room by room |
+| `!room <name>` | Status of a specific room (e.g. `!room work1`) |
+| `!usage` | Current total wattage + today's estimated kWh |
+
+---
+
+## Device Simulator
+
+Runs continuously, ticking every 10 seconds:
+- Randomly flips device on/off states
+- Accumulates `kwh_today` for devices that are ON
+- Detects and writes alerts directly into the `alerts` table:
+  - **After-hours**: any device ON outside 9 AM–5 PM
+  - **Continuous**: a room where all devices have been ON for 2+ hours straight
+- Auto-resolves after-hours alerts once the relevant device turns back off
 
 ```bash
-# from the repository root
-php artisan migrate --seed
-php artisan serve   # serves http://127.0.0.1:8000
+php artisan devices:simulate
 ```
+Leave this running in its own terminal — both the dashboard and Discord bot depend on it for data to actually change over time.
 
-## LLM Prompt Design
+---
 
-The bot never lets the LLM invent data. Raw backend JSON is fetched first, then
-a single reusable humanizer (`src/llm.js` → `humanize(intent, data, extra)`)
-turns it into a friendly Discord sentence. The same function powers both
-on-demand commands and proactive alerts.
+## API Endpoints
 
-Design decisions:
+All endpoints are public (no auth required for this demo).
 
-- **Grounding over creativity.** The prompt hard-instructs the model to use only
-  the supplied JSON and to never invent device states, rooms, wattage, usage, or
-  alerts. `temperature` is kept low (0.2) to minimize drift.
-- **Tone.** It's told to sound like a helpful office colleague, stay under three
-  sentences, avoid JSON in the output, and never mention that it's an AI.
-- **Determinism of facts.** Because the numbers come from the backend and the
-  model only rephrases them, the bot and the dashboard always report the same
-  figures off the same source of truth.
-- **Fallback first.** If `GROQ_API_KEY`/`GROQ_MODEL` are missing, the Groq call
-  errors, or it returns empty text, `humanize` falls back to the plain-text
-  formatters in `src/formatter.js`. The demo works with or without a live LLM
-  key — a bad key can't sink it.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/v1/status` | Full status of all devices, grouped by room |
+| `GET` | `/api/v1/rooms/{id}` | Status of a single room and its devices |
+| `GET` | `/api/v1/usage` | Current total wattage + today's kWh estimate |
+| `GET` | `/api/v1/alerts` | All active (unresolved) alerts |
 
-The provider is **Groq** (free tier, OpenAI-compatible endpoint); keys are read
-only from environment variables and never hardcoded.
+---
+
+## Database Schema
+
+| Table | Key Columns |
+|---|---|
+| `rooms` | `id`, `name` |
+| `devices` | `id`, `room_id`, `name`, `type`, `status`, `power_watts`, `kwh_today`, `last_changed` |
+| `state_logs` | `id`, `device_id`, `old_status`, `new_status`, `changed_at` |
+| `alerts` | `id`, `type`, `message`, `room_id`, `triggered_at`, `resolved` |
+
+---
+
+## Troubleshooting
+
+Issues encountered and fixed during our own fresh-clone testing — documented here so nobody hits them twice.
+
+**`could not find driver` on `php artisan migrate`**
+PHP's SQLite extension isn't enabled. Find your `php.ini` with `php --ini`, uncomment `extension=pdo_sqlite` and `extension=sqlite3`, restart your terminal.
+
+**`Database file at path [database/database.sqlite] does not exist`**
+The SQLite file needs to be created manually before first run (see [Backend Setup](#backend-setup)). If it still fails after creating the file, run `php artisan config:clear` — Laravel may have cached a config from before the file existed.
+
+**Discord bot: `Error: Used disallowed intents`**
+The bot's application needs **Message Content Intent** enabled in the Discord Developer Portal (Bot tab → Privileged Gateway Intents). See [Discord Bot Setup](#discord-bot-setup).
+
+**Dashboard shows empty rooms / all devices off**
+Run `php artisan devices:simulate` in its own terminal and leave it running — device states only change while the simulator is active.
+
+**Alerts panel always empty**
+Confirm `php artisan devices:simulate` is running. Alerts are only generated on simulator ticks, and only for devices currently ON (during after-hours) or rooms fully ON for 2+ hours.
+
+---
+
+## Project Structure
+
+```
+SwitchBoard/
+├── app/
+│   ├── Console/Commands/SimulateDevices.php
+│   ├── Http/Controllers/Api/
+│   ├── Models/ (Room, Device, StateLog, Alert)
+│   └── Services/
+├── database/
+│   ├── migrations/
+│   └── seeders/
+├── routes/api.php
+├── dashboard/          # React + Vite + Tailwind frontend
+├── discord-bot/        # Node.js Discord bot
+└── README.md
+```
